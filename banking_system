@@ -1,0 +1,234 @@
+package bank;
+
+import javax.swing.*;
+import java.awt.*;
+import java.sql.*;
+
+public class BankingSystem extends JFrame {
+
+    private static final String DB_URL = "jdbc:mysql://localhost:3306/banking_system";
+    private static final String DB_USERNAME = "root";
+    private static final String DB_PASSWORD = "andral2005";
+
+    private JTextField usernameField;
+    private JPasswordField passwordField;
+    private JLabel balanceLabel;
+
+    public BankingSystem() {
+    	
+        setTitle("Banking System - Login");
+        setSize(400, 200);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new GridLayout(3, 2));
+        getContentPane().setBackground(Color.YELLOW); // Set background color of main frame
+
+        usernameField = new JTextField();
+        passwordField = new JPasswordField();
+        JButton loginButton = new JButton("🔑 Login");
+        JButton registerButton = new JButton("📝 Register");
+
+        loginButton.addActionListener(e -> login());
+        registerButton.addActionListener(e -> register());
+
+        add(new JLabel("👤 Username:"));
+        add(usernameField);
+        add(new JLabel("🔒 Password:"));
+        add(passwordField);
+        add(loginButton);
+        add(registerButton);
+
+        setVisible(true);
+    }
+
+    private Connection getConnection() {
+    	
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            return DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD);
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "MySQL JDBC Driver not found!");
+            return null;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Database connection failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private void login() {
+    	
+        String username = usernameField.getText();
+        String password = new String(passwordField.getPassword());
+
+        if (username.isEmpty() || password.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Username and password cannot be empty.");
+            return;
+        }
+
+        try (Connection con = getConnection();
+        		
+             PreparedStatement ps = con != null ? con.prepareStatement("SELECT * FROM accounts WHERE username = ? AND password = ?") : null) {
+
+            if (ps == null) {
+                JOptionPane.showMessageDialog(this, "Database connection failed. Cannot prepare statement.");
+                return;
+            }
+
+            ps.setString(1, username);
+            ps.setString(2, password);
+
+            ResultSet rs = ps.executeQuery();
+            if (rs != null && rs.next()) {
+                JOptionPane.showMessageDialog(this, "Login successful! 🎉");
+                new Dashboard(username);
+                dispose();
+            } else {
+                JOptionPane.showMessageDialog(this, "Invalid username or password. ❌");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Database error: " + e.getMessage());
+        }
+    }
+
+    private void register() {
+    	
+        String username = usernameField.getText();
+        String password = new String(passwordField.getPassword());
+        try (Connection con = getConnection();
+             PreparedStatement ps = con.prepareStatement("INSERT INTO accounts (username, password, balance) VALUES (?, ?, 0)")) {
+            ps.setString(1, username);
+            ps.setString(2, password);
+            int rowsInserted = ps.executeUpdate();
+            if (rowsInserted > 0) {
+                JOptionPane.showMessageDialog(this, "Registration successful! 🎉");
+            } else {
+                JOptionPane.showMessageDialog(this, "Registration failed.");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private class Dashboard extends JFrame {
+        private String username;
+
+        public Dashboard(String username) {
+        	
+            this.username = username;
+            setTitle("Banking System - Dashboard");
+            setSize(300, 200);
+            setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            setLayout(new FlowLayout());
+            getContentPane().setBackground(Color.YELLOW); // Set background color of dashboard
+
+            balanceLabel = new JLabel();
+            JButton refreshButton = new JButton("🔄 Refresh Balance");
+            JButton depositButton = new JButton("💵 Deposit");
+            JButton withdrawButton = new JButton("💳 Withdraw");
+
+            refreshButton.addActionListener(e -> fetchBalance());
+            depositButton.addActionListener(e -> depositMoney());
+            withdrawButton.addActionListener(e -> withdrawMoney());
+
+            add(new JLabel("Welcome, " + username + " 👋"));
+            add(balanceLabel);
+            add(refreshButton);
+            add(depositButton);
+            add(withdrawButton);
+
+            fetchBalance();
+            setVisible(true);
+        }
+
+        private void fetchBalance() {
+        	
+            try (Connection con = getConnection();
+                 PreparedStatement ps = con.prepareStatement("SELECT balance FROM accounts WHERE username = ?")) {
+                ps.setString(1, username);
+                ResultSet rs = ps.executeQuery();
+                if (rs.next()) {
+                    double balance = rs.getDouble("balance");
+                    balanceLabel.setText("Balance: $" + balance);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        private void depositMoney() {
+        	
+            String amountStr = JOptionPane.showInputDialog(this, "Enter amount to deposit:");
+            if (amountStr != null && !amountStr.isEmpty()) {
+                try {
+                    double amount = Double.parseDouble(amountStr);
+                    if (amount > 0) {
+                        updateBalance(amount);
+                        JOptionPane.showMessageDialog(this, "Deposit successful! 💰");
+                        fetchBalance();
+                    } else {
+                        JOptionPane.showMessageDialog(this, "Please enter a positive amount.");
+                    }
+                } catch (NumberFormatException e) {
+                    JOptionPane.showMessageDialog(this, "Invalid amount entered.");
+                }
+            }
+        }
+
+        private void withdrawMoney() {
+        	
+            String amountStr = JOptionPane.showInputDialog(this, "Enter amount to withdraw:");
+            if (amountStr != null && !amountStr.isEmpty()) {
+                try {
+                    double amount = Double.parseDouble(amountStr);
+                    if (amount > 0) {
+                        if (getBalance() >= amount) {
+                            updateBalance(-amount);
+                            JOptionPane.showMessageDialog(this, "Withdrawal successful! 💵");
+                            fetchBalance();
+                        } else {
+                            JOptionPane.showMessageDialog(this, "Insufficient balance.");
+                        }
+                    } else {
+                        JOptionPane.showMessageDialog(this, "Please enter a positive amount.");
+                    }
+                } catch (NumberFormatException e) {
+                    JOptionPane.showMessageDialog(this, "Invalid amount entered.");
+                }
+            }
+        }
+
+        private double getBalance() {
+        	
+            double balance = 0;
+            try (Connection con = getConnection();
+                 PreparedStatement ps = con.prepareStatement("SELECT balance FROM accounts WHERE username = ?")) {
+                ps.setString(1, username);
+                ResultSet rs = ps.executeQuery();
+                if (rs.next()) {
+                    balance = rs.getDouble("balance");
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return balance;
+        }
+
+        private void updateBalance(double amount) {
+        	
+            try (Connection con = getConnection();
+                 PreparedStatement ps = con.prepareStatement("UPDATE accounts SET balance = balance + ? WHERE username = ?")) {
+                ps.setDouble(1, amount);
+                ps.setString(2, username);
+                ps.executeUpdate();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        new BankingSystem();
+    }
+}
